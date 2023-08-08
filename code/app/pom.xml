@@ -53,11 +53,6 @@
         <scope>test</scope>
        </dependency>
         <dependency>
-           <groupId>com.amazonaws</groupId>
-           <artifactId>aws-java-sdk-codeguruprofiler</artifactId>
-           <version>1.12.421</version>
-        </dependency>
-        <dependency>
           <groupId>org.slf4j</groupId>
           <artifactId>slf4j-api</artifactId>
           <version>${slf4j.version}</version>

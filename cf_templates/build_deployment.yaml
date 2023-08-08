@@ -38,88 +38,6 @@ Parameters:
 
 Resources:
 
-  MySecurityHub:
-    Type: 'AWS::SecurityHub::Hub'
-    Properties:
-      Tags:
-        Name: MySecurityHub
-        Purpose: Security
-
-  SourceRepositoryAssociation:
-    Type: AWS::CodeGuruReviewer::RepositoryAssociation
-    Properties:
-      Name: !Ref SourceRepoName
-      Type: CodeCommit
-      BucketName: !Ref CodeGuruReviewerBucket
-
-  MyProfilingGroup:
-    Type: AWS::CodeGuruProfiler::ProfilingGroup
-    Properties:
-      ProfilingGroupName: "MyProfilingGroup"
-      ComputePlatform: "Default"
-      AgentPermissions:
-        Principals:
-          - !Ref EKSWorkerNodeRoleARN
-
-  BuildPipelineSNSTopic:
-    Type: AWS::SNS::Topic
-    Properties:
-      KmsMasterKeyId: alias/aws/sns
-      TopicName:
-        Fn::Sub: PipelineSNSTopic-${AWS::StackName}
-
-  BuildPipelineSNSSubscription:
-    Type: AWS::SNS::Subscription
-    Properties:
-      Endpoint: !Ref EmailRecipient
-      Protocol: email
-      TopicArn: !Ref 'BuildPipelineSNSTopic'
-
-  BuildPipelineSnsPolicy:
-    Type: AWS::SNS::TopicPolicy
-    Properties:
-      Topics: [ !Ref BuildPipelineSNSTopic ]
-      PolicyDocument: !Sub |
-        {
-          "Version": "2012-10-17",
-          "Id": "__default_policy_ID",
-          "Statement": [
-            {
-              "Sid": "__default_statement_ID",
-              "Effect": "Allow",
-              "Principal": {
-                "AWS": "*"
-              },
-              "Action": [
-                "SNS:GetTopicAttributes",
-                "SNS:SetTopicAttributes",
-                "SNS:AddPermission",
-                "SNS:RemovePermission",
-                "SNS:DeleteTopic",
-                "SNS:Subscribe",
-                "SNS:ListSubscriptionsByTopic",
-                "SNS:Publish",
-                "SNS:Receive"
-              ],
-              "Resource": "${BuildPipelineSNSTopic}",
-              "Condition": {
-                "StringEquals": {
-                  "AWS:SourceOwner": "${AWS::AccountId}"
-                }
-              }
-            },
-            {
-              "Sid": "Allow Events",
-              "Effect": "Allow",
-              "Principal": {
-                "Service": "events.amazonaws.com"
-              },
-              "Action": "sns:Publish",
-              "Resource": "${BuildPipelineSNSTopic}"
-            }
-          ]
-        }
-
   CodeBuildImageStateEventRule:
     Type: "AWS::Events::Rule"
     Properties:
@@ -437,30 +355,6 @@ Resources:
                 Effect: Allow
                 Action:
                   - ecr:DescribeImages
-              - Resource: !Ref MySecurityHub
-                Effect: Allow
-                Action:
-                  - securityhub:Get*
-                  - securityhub:List*
-                  - securityhub:Describe*
-                  - config:DescribeConfigurationRecorders
-                  - config:DescribeConfigurationRecorderStatus
-                  - config:DescribeConfigRules
-                  - config:BatchGetResourceConfig
-                  - config:SelectResourceConfig
-                  - config:PutEvaluations
-                  - logs:DescribeMetricFilters
-                  - cloudtrail:DescribeTrails
-                  - cloudtrail:GetTrailStatus
-                  - cloudtrail:GetEventSelectors
-                  - cloudwatch:DescribeAlarms
-                  - cloudwatch:DescribeAlarmsForMetric
-                  - iam:GenerateCredentialReport
-                  - iam:GetCredentialReport
-              - Resource: !Sub arn:${AWS::Partition}:securityhub:${AWS::Region}::product/aquasecurity/aquasecurity
-                Effect: Allow
-                Action:
-                  - securityhub:BatchImportFindings
               - Resource: !Sub arn:${AWS::Partition}:s3:::${CodePipelineArtifactBucket}/*
                 Effect: Allow
                 Action:
@@ -489,35 +383,6 @@ Resources:
         - arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryPowerUser
       Policies:
         - PolicyName: codebuild-access-1
-          PolicyDocument:
-            Version: 2012-10-17
-            Statement:
-              - Resource: !Ref MySecurityHub
-                Effect: Allow
-                Action:
-                  - securityhub:Get*
-                  - securityhub:List*
-                  - securityhub:Describe*
-                  - securityhub:BatchImportFindings
-                  - config:DescribeConfigurationRecorders
-                  - config:DescribeConfigurationRecorderStatus
-                  - config:DescribeConfigRules
-                  - config:BatchGetResourceConfig
-                  - config:SelectResourceConfig
-                  - config:PutEvaluations
-                  - logs:DescribeMetricFilters
-                  - cloudtrail:DescribeTrails
-                  - cloudtrail:GetTrailStatus
-                  - cloudtrail:GetEventSelectors
-                  - cloudwatch:DescribeAlarms
-                  - cloudwatch:DescribeAlarmsForMetric
-                  - iam:GenerateCredentialReport
-                  - iam:GetCredentialReport
-              - Resource: !Sub arn:${AWS::Partition}:securityhub:${AWS::Region}::product/aquasecurity/aquasecurity
-                Effect: Allow
-                Action:
-                  - securityhub:BatchImportFindings
-        - PolicyName: codebuild-access-2
           PolicyDocument:
             Version: 2012-10-17
             Statement:
@@ -608,37 +473,6 @@ Resources:
                   - eks:DescribeNodegroup
                   - eks:DescribeUpdate
                   - eks:DescribeCluster
-
-  CodeSecScanProject:
-    Type: AWS::CodeBuild::Project
-    Properties:
-      Artifacts:
-        Type: CODEPIPELINE
-      Source:
-        Location:
-          Fn::Sub: https://git-codecommit.${AWS::Region}.amazonaws.com/v1/repos/${SourceRepoName}
-        Type: CODEPIPELINE
-        BuildSpec: "buildspec/buildspec_secscan.yaml"
-      TimeoutInMinutes: 30
-      EncryptionKey: alias/aws/s3
-      Environment:
-        ComputeType: BUILD_GENERAL1_SMALL
-        Type: LINUX_CONTAINER
-        Image: "aws/codebuild/standard:5.0"
-        PrivilegedMode: True
-        EnvironmentVariables:
-          - Name: AWS_DEFAULT_REGION
-            Value: !Ref AWS::Region
-          - Name: AWS_ACCOUNT_ID
-            Value: !Ref AWS::AccountId
-          - Name: CG_REVIEWER_BUCKET_NAME
-            Value: !Ref CodeGuruReviewerBucket
-          - Name: EKS_CODEBUILD_APP_NAME
-            Value: !Ref EKSCodeBuildAppName
-      Name:
-        Fn::Sub: SecScan-${AWS::StackName}
-      ServiceRole:
-        Fn::GetAtt: [ CodeBuildServiceRole, Arn ]
 
   CodeBuildImageProject:
     Type: AWS::CodeBuild::Project
@@ -735,21 +569,6 @@ Resources:
               OutputArtifacts:
                 - Name: SourceCodeApp
               RunOrder: 1
-        - Name: CodeSecurityScan
-          Actions:
-            - Name: SecScan
-              ActionTypeId:
-                Category: Build
-                Owner: AWS
-                Version: 1
-                Provider: CodeBuild
-              Configuration:
-                ProjectName: !Ref CodeSecScanProject
-              InputArtifacts:
-                - Name: SourceCodeApp
-              OutputArtifacts:
-                - Name: SecScanOutput
-              RunOrder: 2
         - Name: Build
           Actions:
             - Name: Build
@@ -796,9 +615,6 @@ Resources:
     DependsOn: [ "BuildPipelineSNSTopic", "BuildPipelineSNSSubscription" ]
 
 Outputs:
-  HubArn:
-    Description: ARN of AWS Securityhub enabled
-    Value: !Ref MySecurityHub
   SNSTopic:
     Description: SNS TopicName
     Value: !Ref BuildPipelineSNSTopic
